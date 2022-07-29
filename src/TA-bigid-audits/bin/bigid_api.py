@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import json
 import os
 import sys
@@ -9,7 +7,7 @@ import datetime, time
 from splunklib.modularinput import *
 import splunklib.client as client
 
-class BigId_Audit_Logs(Script):
+class BigIdAuditLogs(Script):
     
     MASK = "***ENCRYPTED***"
     CREDENTIALS = None
@@ -237,5 +235,5 @@ class BigId_Audit_Logs(Script):
         self.delete_tmp_files()
 
 if __name__ == "__main__":
-    sys.exit(BigId_Audit_Logs().run(sys.argv))
+    sys.exit(BigIdAuditLogs().run(sys.argv))
     
