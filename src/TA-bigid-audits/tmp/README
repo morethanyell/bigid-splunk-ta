@@ -1,0 +1,1 @@
+Checkpointers and other temp files go here. The scrip has a logic incorporated in it to delete older tmp files.
