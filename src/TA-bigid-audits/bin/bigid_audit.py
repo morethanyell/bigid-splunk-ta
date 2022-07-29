@@ -75,7 +75,7 @@ class BigIdAuditLogs(Script):
             if storage_password.username == _token_name:
                 return storage_password.content.clear_password
     
-    def mask_credentials(self, _base_url, _token_name, _session_key):
+    def mask_credentials(self, _base_url, _token_name, _input_name, _session_key):
 
         try:
             args = {'token': _session_key}
@@ -97,7 +97,7 @@ class BigIdAuditLogs(Script):
     
     def refresh_token(self, ew, _base_url, _auth_token):
         
-        base_url = _base_url
+        base_url = _base_url + '/api/v1'
         endpoint_refresh = '/refresh-access-token'
         url = base_url + endpoint_refresh
         
@@ -109,15 +109,16 @@ class BigIdAuditLogs(Script):
         r = requests.get(url=url, headers=headers)
         
         if r.status_code != 200:
-            ew.log("ERROR", "Unsuccessful HTTP request for `Campaigns` endpoint. status_code=: %s" % str(r.status_code))
+            ew.log("ERROR", "Unsuccessful HTTP request for BigId Audit Log endpoint. status_code=: %s" % str(r.status_code))
             sys.exit(1)
             
         return r.json()["systemToken"]
     
     def get_audit_logs(self, ew, _base_url, _auth_token):
-        base_url = _base_url
-        endpoint_refresh = '/audit-log'
-        url = base_url + endpoint_refresh
+        
+        base_url = _base_url + '/api/v1'
+        endpoint_auditlogs = '/audit-log'
+        url = base_url + endpoint_auditlogs
         
         headers = {
             'Authorization': _auth_token,
@@ -187,31 +188,31 @@ class BigIdAuditLogs(Script):
         try:
             if auth_token != self.MASK:
                 self.encrypt_keys(token_name, auth_token, session_key)
-                self.mask_credentials(self.input_name, token_name, session_key)
+                self.mask_credentials(base_url, token_name, self.input_name, session_key)
             
             decrypted = self.decrypt_keys(token_name, session_key)
             self.CREDENTIALS = json.loads(decrypted)
 
             auth_token = self.CREDENTIALS["authToken"]
             
-            ew.log("INFO", f'Refreshing token...')
-            r_rt = self.refresh_token(self, ew, base_url, auth_token)
+            ew.log("INFO", f'Refreshing token on {base_url} with token (secret) length: {str(len(auth_token))}')
+            r_rt = self.refresh_token(ew, base_url, auth_token)
             
             ew.log("INFO", f'Token refreshed. Now retrieving audit logs...')
-            r_al = self.get_audit_logs(self, ew, base_url, r_rt)
+            r_al = self.get_audit_logs(ew, base_url, r_rt)
             audit_dumps = r_al.text.splitlines()
             
             ew.log("INFO", f'Audit logs retrieved. A total of {str(len(audit_dumps))} lines. Working on checkpoint...')
             
             index_to_start = -1
-            checkpoint = self.read_tail(self, ew)
+            checkpoint = self.read_tail(ew)
             
             checkpointHash = hashlib.sha256(checkpoint.encode())
             
             ew.log("INFO", f'Checkpoint hash is: {checkpointHash}.')
             
             if checkpoint == self.EMPTY_LOG:
-                self.write_to_tail(self, audit_dumps, 'w+')
+                self.write_to_tail(audit_dumps, 'w+')
             else:
                 for ad in audit_dumps:
                     index_to_start = index_to_start + 1
@@ -219,7 +220,7 @@ class BigIdAuditLogs(Script):
             
             new_audit_logs = audit_dumps[index_to_start + 1:]
             
-            self.write_to_tail(self, new_audit_logs, 'a+')
+            self.write_to_tail(new_audit_logs, 'a+')
             
             for event in new_audit_logs:
                 e = Event()
