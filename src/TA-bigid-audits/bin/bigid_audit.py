@@ -179,16 +179,17 @@ class BigIdAuditLogs(Script):
         session_key = self._input_definition.metadata["session_key"]
 
         base_url = self.input_items["base_url"]
+        token_name = self.input_items["token_name"]
         auth_token = self.input_items["auth_token"]
 
         ew.log("INFO", f'Collecting BigId Audit Logs from: {str(base_url)}')
         
         try:
             if auth_token != self.MASK:
-                self.encrypt_keys(auth_token, session_key)
-                self.mask_credentials(self.input_name, auth_token, session_key)
+                self.encrypt_keys(token_name, auth_token, session_key)
+                self.mask_credentials(self.input_name, token_name, session_key)
             
-            decrypted = self.decrypt_keys(auth_token, session_key)
+            decrypted = self.decrypt_keys(token_name, session_key)
             self.CREDENTIALS = json.loads(decrypted)
 
             auth_token = self.CREDENTIALS["authToken"]
