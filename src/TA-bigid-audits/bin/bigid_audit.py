@@ -14,10 +14,10 @@ class BigIdAuditLogs(Script):
     EMPTY_LOG = "<<EMPTY>>"
     
     def get_scheme(self):
-        scheme = Scheme("BigID")
+        scheme = Scheme("BigId Audit Logs")
         scheme.use_external_validation = False
         scheme.use_single_instance = False
-        scheme.description = "BigID Token Credentials"
+        scheme.description = "BigId Token Credentials"
 
         base_url = Argument("base_url")
         base_url.title = "URL"
