@@ -1,1 +1,1 @@
-Checkpointers and other temp files go here. The scrip has a logic incorporated in it to delete older tmp files.
+Checkpointers and other temp files go here. The script has a logic incorporated in it to delete older tmp/checkpoint information so that the file doesn't balloon up.
