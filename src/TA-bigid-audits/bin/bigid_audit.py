@@ -3,7 +3,7 @@ import os
 import sys
 import requests
 import hashlib
-import datetime, time
+import random
 from splunklib.modularinput import *
 import splunklib.client as client
 
@@ -11,13 +11,14 @@ class BigIdAuditLogs(Script):
     
     MASK = "***ENCRYPTED***"
     CREDENTIALS = None
-    EMPTY_LOG = "<<EMPTY>>"
+    CHECKPOINT_HEADER = "---START OF CHECKPOINTING---"
+    CHECKPOINT_FILE_PATH = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', 'tmp', 'CHECKPOINT'))
     
     def get_scheme(self):
-        scheme = Scheme("BigId Audit Logs")
+        scheme = Scheme("BigID Audit Logs")
         scheme.use_external_validation = False
         scheme.use_single_instance = False
-        scheme.description = "BigId Token Credentials"
+        scheme.description = "BigID Token Credentials"
 
         base_url = Argument("base_url")
         base_url.title = "URL"
@@ -108,11 +109,15 @@ class BigIdAuditLogs(Script):
         
         r = requests.get(url=url, headers=headers)
         
-        if r.status_code != 200:
-            ew.log("ERROR", "Unsuccessful HTTP request for BigId Audit Log endpoint. status_code=: %s" % str(r.status_code))
-            sys.exit(1)
+        try:
+            if r.status_code != 200:
+                ew.log("ERROR", f'Unsuccessful HTTP request for BigID Refresh Token endpoint. status_code={str(r.status_code)}')
+                sys.exit(1)
             
-        return r.json()["systemToken"]
+            return r.json()["systemToken"]
+        except Exception as e:
+            ew.log("ERROR", "Error getting audit logs: %s" % str(e))
+            sys.exit(1)
     
     def get_audit_logs(self, ew, _base_url, _auth_token):
         
@@ -125,55 +130,69 @@ class BigIdAuditLogs(Script):
             'Content-Type': 'application/json'
         }
         
-        return requests.get(url=url, headers=headers)
+        try:
+            r = requests.get(url=url, headers=headers)
+        
+            if r.status_code != 200:
+                ew.log("ERROR", f'Unsuccessful HTTP request for BigID Audit Log endpoint. status_code={str(r.status_code)}')
+                sys.exit(1)
+                
+            return r
+        
+        except Exception as e:
+            ew.log("ERROR", "Error getting audit logs: %s" % str(e))
+            sys.exit(1)
+            
+    def append_checkpoint(self, ew, _chkpt, mode):
+        
+        ew.log("INFO", f'Appending checkpoint to: {self.CHECKPOINT_FILE_PATH}')
+        
+        with open(self.CHECKPOINT_FILE_PATH, mode) as f:
+            f.write(f'{_chkpt}\n')
+            f.close()
     
-    def tmp_file():
-        today = datetime.date.today()
-        tmp_path = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', 'tmp'))
-        return os.path.join(tmp_path, f'{today}.log')
-            
-    def write_to_tail(self, _new_lines, mode):
-        
-        expected_file_path = self.tmp_file()
-        
-        with open(expected_file_path, mode) as f:
-            for line in _new_lines:
-                f.write(f'{line}\n')
-            
     def read_tail(self, ew):
         
-        tail = ""
-        file_path_to_read = ""
-        today = datetime.date.today()
-        tmp_path = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', 'tmp'))
-        expected_file_path = self.tmp_file()
+        tail = self.CHECKPOINT_HEADER
         
-        if not os.path.exists(expected_file_path):
-            file_path_to_read = os.path.join(tmp_path, f'{today - datetime.timedelta(days = 1)}.log')
-            ew.log("INFO", f'Creating new tmp file: {expected_file_path}')
-            with open(expected_file_path, "a+") as f:
-                f.close()
-        else:
-            file_path_to_read = expected_file_path
-        
-        with open(file_path_to_read, "r+") as f:
-            first_line = f.read(1)
-            if not first_line:
-                tail = self.EMPTY_LOG
-            else:
-                tail = f.readlines()[-1]
+        if not os.path.exists(self.CHECKPOINT_FILE_PATH):
             
-        return tail
-    
-    def delete_tmp_files(self):
-        tmp_path = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', 'tmp'))
-        now = time.time()
-        for f in os.listdir(tmp_path):
-            f = os.path.join(tmp_path, f)
-            if os.stat(f).st_mtime < now - (7 * 86400):
-                if os.path.isfile(f):
-                    os.remove(os.path.join(tmp_path, f))
+            ew.log("INFO", f'Expected checkpoint file is not found. Creating new a one: {self.CHECKPOINT_FILE_PATH}')
+            
+            with open(self.CHECKPOINT_FILE_PATH, "a+") as f:
+                f.write(f'{tail}\n')
+                f.close()
+            
+            ew.log("INFO", f'New checkpoint file has been successfully created.')
+            
+        with open(self.CHECKPOINT_FILE_PATH, "r+") as f:
+            all_lines = f.readlines()
+            if len(all_lines) > 0:
+                tail = all_lines[-1]
+            f.close()
+            
+        return self.CHECKPOINT_HEADER if (tail == self.CHECKPOINT_HEADER) else tail.strip()
         
+    def trim_checkpoint(self, ew, _size_to_truncate):
+        
+        with open(self.CHECKPOINT_FILE_PATH, 'r+') as f:
+            file_contents = f.readlines()
+            f.close()
+        
+        if len(file_contents) > _size_to_truncate:
+            
+            ew.log("INFO", f'Removing first {str(_size_to_truncate)} lines of checkpoints.')
+            
+            new_contents = file_contents[_size_to_truncate:]
+            new_contents = [self.CHECKPOINT_HEADER + '\n', *new_contents]
+            
+            with open(self.CHECKPOINT_FILE_PATH, 'w') as f:
+                for l in new_contents:
+                    l = l.strip()
+                    f.write(f'{l}\n')
+                f.close()
+        
+    
     def stream_events(self, inputs, ew):
         
         self.input_name, self.input_items = inputs.inputs.popitem()
@@ -183,7 +202,7 @@ class BigIdAuditLogs(Script):
         token_name = self.input_items["token_name"]
         auth_token = self.input_items["auth_token"]
 
-        ew.log("INFO", f'Collecting BigId Audit Logs from: {str(base_url)}')
+        ew.log("INFO", f'Collecting BigID Audit Logs from: {str(base_url)}')
         
         try:
             if auth_token != self.MASK:
@@ -192,49 +211,61 @@ class BigIdAuditLogs(Script):
             
             decrypted = self.decrypt_keys(token_name, session_key)
             self.CREDENTIALS = json.loads(decrypted)
-
             auth_token = self.CREDENTIALS["authToken"]
+            
+            # Retrieve checkpoint 
+            checkpoint_hash = self.read_tail(ew)
+            ew.log("INFO", f'Checkpoint retrieved: {checkpoint_hash}.')
             
             ew.log("INFO", f'Refreshing token on {base_url} with token (secret) length: {str(len(auth_token))}')
             r_rt = self.refresh_token(ew, base_url, auth_token)
             
-            ew.log("INFO", f'Token refreshed. Now retrieving audit logs...')
+            ew.log("INFO", 'Token refreshed. Now retrieving audit logs...')
             r_al = self.get_audit_logs(ew, base_url, r_rt)
             audit_dumps = r_al.text.splitlines()
             
-            ew.log("INFO", f'Audit logs retrieved. A total of {str(len(audit_dumps))} lines. Working on checkpoint...')
-            
+            ew.log("INFO", f'Audit logs retrieved. A total of {str(len(audit_dumps))} lines. Now working on checkpoint matching...')
             index_to_start = -1
-            checkpoint = self.read_tail(ew)
             
-            checkpointHash = hashlib.sha256(checkpoint.encode())
-            
-            ew.log("INFO", f'Checkpoint hash is: {checkpointHash}.')
-            
-            if checkpoint == self.EMPTY_LOG:
-                self.write_to_tail(audit_dumps, 'w+')
-            else:
+            if checkpoint_hash != self.CHECKPOINT_HEADER:
+                ew.log("INFO", f'Checkpoint is not empty. Starting with new events only. Searching audit dumps for a checkpoint match...')
                 for ad in audit_dumps:
                     index_to_start = index_to_start + 1
-                    if str(checkpoint).strip() == str(ad).strip(): break
+                    ad_line_hash = hashlib.sha256(ad.strip().encode())
+                    ad_line_hash = ad_line_hash.hexdigest()
+                    if checkpoint_hash == ad_line_hash: 
+                        ew.log("INFO", f'Checkpoint found. Starting at line: {str(index_to_start)}.')
+                        break
+            else:
+                ew.log("INFO", f'Checkpoint is empty. All audit logs will be indexed.')
             
             new_audit_logs = audit_dumps[index_to_start + 1:]
             
-            self.write_to_tail(new_audit_logs, 'a+')
+            ew.log("INFO", f'Done writing/appending new checkpoint. Now indexing events...')
             
-            for event in new_audit_logs:
-                e = Event()
-                e.stanza = self.input_name
-                e.sourcetype = "bigid:audit"
-                e.data = event
-                ew.write_event(event)
+            for line in new_audit_logs:
+                auditLine = Event()
+                auditLine.stanza = self.input_name
+                auditLine.sourceType  = "bigid:audit"
+                auditLine.data = line
+                ew.write_event(auditLine)
             
             ew.log("INFO", f'Successfully indexed {str(len(new_audit_logs))} BigID audit logs.')
             
-        except Exception as e:
-            ew.log("ERROR", "Error: %s" % str(e))
+            # Create checkpoint 
+            new_checkpoint = new_audit_logs[len(new_audit_logs) - 1]
+            new_checkpoint_hash = hashlib.sha256(new_checkpoint.strip().encode())
+            new_checkpoint_hash = new_checkpoint_hash.hexdigest()
+            self.append_checkpoint(ew, new_checkpoint_hash, 'a+')
             
-        self.delete_tmp_files()
+            # Trim checkpoint file only half of the time
+            if random.random() < .5:
+                self.trim_checkpoint(ew, 3000)
+            
+            
+        except Exception as e:
+            ew.log("ERROR", "Error streaming events: %s" % str(e))
+            
 
 if __name__ == "__main__":
     sys.exit(BigIdAuditLogs().run(sys.argv))
