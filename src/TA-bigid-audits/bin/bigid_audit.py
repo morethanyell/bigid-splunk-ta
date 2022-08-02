@@ -238,9 +238,9 @@ class BigIdAuditLogs(Script):
                         ew.log("INFO", f'Checkpoint found. Starting at line: {str(index_to_start)}.')
                         break
                 
-                ew.log("INFO", f'Checkpoint engine report: {str(index_to_start)}/{len(total_audit_dumps)}.')
+                ew.log("INFO", f'Checkpoint engine report: {str(index_to_start + 1)}/{total_audit_dumps}.')
 
-                if index_to_start > total_audit_dumps:
+                if index_to_start == total_audit_dumps - 1:
                     ew.log("INFO", f'No checkpoint found. All audit logs will be indexed.')
                     index_to_start = -1
 
@@ -263,7 +263,7 @@ class BigIdAuditLogs(Script):
             new_checkpoint_hash = hashlib.sha256(new_checkpoint.strip().encode())
             new_checkpoint_hash = new_checkpoint_hash.hexdigest()
             self.append_checkpoint(ew, new_checkpoint_hash, 'a+')
-            ew.log("INFO", f'Done writing/appending new checkpoint.')
+            ew.log("INFO", f'Done writing/appending new checkpoint.'
             
             # Trim checkpoint file only half of the time
             if random.random() < .5:
