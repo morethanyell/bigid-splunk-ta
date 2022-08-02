@@ -223,8 +223,9 @@ class BigIdAuditLogs(Script):
             ew.log("INFO", 'Token refreshed. Now retrieving audit logs...')
             r_al = self.get_audit_logs(ew, base_url, r_rt)
             audit_dumps = r_al.text.splitlines()
+            total_audit_dumps = len(audit_dumps)
             
-            ew.log("INFO", f'Audit logs retrieved. A total of {str(len(audit_dumps))} lines. Now working on checkpoint matching...')
+            ew.log("INFO", f'Audit logs retrieved. A total of {str(total_audit_dumps)} lines. Now working on checkpoint matching...')
             index_to_start = -1
             
             if checkpoint_hash != self.CHECKPOINT_HEADER:
@@ -236,6 +237,9 @@ class BigIdAuditLogs(Script):
                     if checkpoint_hash == ad_line_hash: 
                         ew.log("INFO", f'Checkpoint found. Starting at line: {str(index_to_start)}.')
                         break
+                if index_to_start > total_audit_dumps:
+                    ew.log("INFO", f'No checkpoint found: {str(index_to_start)}/{len(total_audit_dumps)}. All audit logs will be indexed.')
+
             else:
                 ew.log("INFO", f'Checkpoint is empty. All audit logs will be indexed.')
             
