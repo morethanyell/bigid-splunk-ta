@@ -263,7 +263,7 @@ class BigIdAuditLogs(Script):
             new_checkpoint_hash = hashlib.sha256(new_checkpoint.strip().encode())
             new_checkpoint_hash = new_checkpoint_hash.hexdigest()
             self.append_checkpoint(ew, new_checkpoint_hash, 'a+')
-            ew.log("INFO", f'Done writing/appending new checkpoint.'
+            ew.log("INFO", f'Done writing/appending new checkpoint.')
             
             # Trim checkpoint file only half of the time
             if random.random() < .5:
