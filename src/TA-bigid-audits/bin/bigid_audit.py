@@ -107,9 +107,10 @@ class BigIdAuditLogs(Script):
             'Content-Type': 'application/json'
         }
         
-        r = requests.get(url=url, headers=headers)
-        
         try:
+                    
+            r = requests.get(url=url, headers=headers)
+            
             if r.status_code != 200:
                 ew.log("ERROR", f'Unsuccessful HTTP request for BigID Refresh Token endpoint. status_code={str(r.status_code)}')
                 sys.exit(1)
